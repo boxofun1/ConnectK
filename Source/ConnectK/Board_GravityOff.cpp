@@ -534,12 +534,33 @@ int ABoard_GravityOff::GetRemainingSpaces()
     return RemainingSpaces;
 }
 
-void ABoard_GravityOff::ClaimBoardSpace(int RowIdx, int ColumnIdx, int ClaimingTeamIdx)
+void ABoard_GravityOff::SetBoardSpace(int RowIdx, int ColumnIdx, int SettingTeamIdx)
 {
     ABoardSpaceBase* BoardSpace = GetBoardSquare(RowIdx, ColumnIdx);
-    BoardSpace->ClaimedTeamIdx = ClaimingTeamIdx;
 
-    RemainingSpaces--;
+    if (BoardSpace->ClaimedTeamIdx == -1)
+    {
+        RemainingSpaces--;
+    }
+
+    BoardSpace->ClaimedTeamIdx = SettingTeamIdx;
+}
+
+void ABoard_GravityOff::ClearBoardSpace(int RowIdx, int ColumnIdx)
+{
+    ABoardSpaceBase* BoardSpace = GetBoardSquare(RowIdx, ColumnIdx);
+
+    if (BoardSpace->ClaimedTeamIdx != -1)
+    {
+        RemainingSpaces++;
+    }
+
+    BoardSpace->ClaimedTeamIdx = -1;
+}
+
+void ABoard_GravityOff::ClaimBoardSpace(int RowIdx, int ColumnIdx, int ClaimingTeamIdx)
+{
+    SetBoardSpace(RowIdx, ColumnIdx, ClaimingTeamIdx);
 
     FBoardAnimData AnimData;
     SendAnimData(InitAnimData(AnimData, RowIdx, ColumnIdx, ClaimingTeamIdx));

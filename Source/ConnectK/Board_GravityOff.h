@@ -90,6 +90,8 @@ public:
 	int GetRemainingSpaces();
 	UFUNCTION(BlueprintCallable)
 	void ClaimBoardSpace(int RowIdx, int ColumnIdx, int ClaimingTeamIdx);
+	void SetBoardSpace(int RowIdx, int ColumnIdx, int SettingTeamIdx);
+	void ClearBoardSpace(int RowIdx, int ColumnIdx);
 
 	UFUNCTION(NetMulticast, Reliable)
 	void SendAnimData(const FBoardAnimData& AnimData);

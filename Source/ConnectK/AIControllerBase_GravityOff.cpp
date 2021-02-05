@@ -247,7 +247,6 @@ FBoardMove AAIControllerBase_GravityOff::FirstMax(ABoard_GravityOff* Board, int 
 	//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("IN FIRST MAX"));
 
 	int v = NEGATIVE_INFINITY;
-	Board->RemainingSpaces--;
 	FBoardMove BestMove;
 
 	TArray<FIntPoint> PossibleMoveCoordinates = Board->GetPossibleFutureMoves();
@@ -256,13 +255,12 @@ FBoardMove AAIControllerBase_GravityOff::FirstMax(ABoard_GravityOff* Board, int 
 		//if (GEngine)
 		//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("Checking Move: (X: %d, Y: %d)"), PossibleMove.X, PossibleMove.Y));
 
-		Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = TeamIdx;
+		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx);
 
 		int WinningTeamIdx = Board->EvaluateBoard();
 		if (WinningTeamIdx == TeamIdx)
 		{
-			Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
-			Board->RemainingSpaces++;
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return FBoardMove(WIN_VAL, PossibleMove);
 		}
 		else if (WinningTeamIdx != TeamIdx && WinningTeamIdx != -1)
@@ -280,15 +278,13 @@ FBoardMove AAIControllerBase_GravityOff::FirstMax(ABoard_GravityOff* Board, int 
 
 		if (v == WIN_VAL)
 		{
-			Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
-			Board->RemainingSpaces++;
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return FBoardMove(WIN_VAL, PossibleMove);
 		}
 
 		if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds >= MaxTimeInSeconds)
 		{
-			Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
-			Board->RemainingSpaces++;
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return FBoardMove(CANCEL_VAL, FIntPoint(0.0f, 0.0f));
 		}
 
@@ -299,12 +295,12 @@ FBoardMove AAIControllerBase_GravityOff::FirstMax(ABoard_GravityOff* Board, int 
 
 		Alpha = FMath::Max(Alpha, v);
 
-		Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
+		Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 	}
 
-	Board->RemainingSpaces++;
 	return BestMove;
 }
+
 int AAIControllerBase_GravityOff::MaxVal(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds)
 {
 
@@ -317,24 +313,21 @@ int AAIControllerBase_GravityOff::MaxVal(ABoard_GravityOff* Board, int Alpha, in
 	}
 
 	int v = NEGATIVE_INFINITY;
-	Board->RemainingSpaces--;
 
 	TArray<FIntPoint> PossibleMoveCoordinates = Board->GetPossibleFutureMoves();
 	for (FIntPoint &PossibleMove : PossibleMoveCoordinates)
 	{
 		if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds >= MaxTimeInSeconds)
 		{
-			Board->RemainingSpaces++;
 			return CANCEL_VAL;
 		}
 
-		Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = TeamIdx;
+		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx);
 
 		int WinningTeamIdx = Board->EvaluateBoard();
 		if (WinningTeamIdx == TeamIdx)
 		{
-			Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
-			Board->RemainingSpaces++;
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return WIN_VAL;
 		}
 		else if (WinningTeamIdx != TeamIdx && WinningTeamIdx != -1)
@@ -353,19 +346,18 @@ int AAIControllerBase_GravityOff::MaxVal(ABoard_GravityOff* Board, int Alpha, in
 
 		if (v >= Beta)
 		{
-			Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
-			Board->RemainingSpaces++;
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return v;
 		}
 
 		Alpha = FMath::Max(Alpha, v);
 
-		Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
+		Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 	}
 
-	Board->RemainingSpaces++;
 	return v;
 }
+
 int AAIControllerBase_GravityOff::MinVal(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds)
 {
 
@@ -378,24 +370,21 @@ int AAIControllerBase_GravityOff::MinVal(ABoard_GravityOff* Board, int Alpha, in
 	}
 
 	int v = POSITIVE_INFINITY;
-	Board->RemainingSpaces--;
 
 	TArray<FIntPoint> PossibleMoveCoordinates = Board->GetPossibleFutureMoves();
 	for (FIntPoint &PossibleMove : PossibleMoveCoordinates)
 	{
 		if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds >= MaxTimeInSeconds)
 		{
-			Board->RemainingSpaces++;
 			return CANCEL_VAL;
 		}
 
-		Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = TeamIdx == 0 ? 1 : 0;
+		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx == 0 ? 1 : 0);
 
 		int WinningTeamIdx = Board->EvaluateBoard();
 		if (WinningTeamIdx != TeamIdx && WinningTeamIdx != -1)
 		{
-			Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
-			Board->RemainingSpaces++;
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return LOSE_VAL;
 		}
 		else if (WinningTeamIdx == TeamIdx)
@@ -414,17 +403,14 @@ int AAIControllerBase_GravityOff::MinVal(ABoard_GravityOff* Board, int Alpha, in
 
 		if (v <= Alpha)
 		{
-			Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
-			Board->RemainingSpaces++;
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return v;
 		}
 
 		Beta = FMath::Min(Beta, v);
 
-		Board->GetBoardSquare(PossibleMove.Y, PossibleMove.X)->ClaimedTeamIdx = -1;
+		Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 	}
-
-	Board->RemainingSpaces++;
 
 	return v;
 }
