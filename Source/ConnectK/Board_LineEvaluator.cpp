@@ -19,4 +19,3 @@ void UBoard_LineEvaluator::Init(ABoard_GravityOff* InBoard)
 {
 	Board = InBoard;
 }
-
