@@ -25,10 +25,6 @@ void ABoard_GravityOff::BeginPlay()
     {
         Pair.Value->Init();
     }
-
-    EvaluationData = NewObject<UBoardEvaluationData>();
-    EvaluationData->AllTeamEvaluationData.Add(NewObject<UTeamBoardEvaluationData>());
-    EvaluationData->AllTeamEvaluationData.Add(NewObject<UTeamBoardEvaluationData>());
 }
 
 // Called every frame
@@ -153,109 +149,73 @@ ABoardSpaceBase* ABoard_GravityOff::GetBoardSquare(int RowIdx, int ColumnIdx)
     return BoardSpaces[RowIdx][ColumnIdx];
 }
 
-int ABoard_GravityOff::EvaluateBoard()
+FBoardEvaluationData ABoard_GravityOff::EvaluateBoard()
 {
-    FString LineTypes[] = { "UBoard_LineEvaluatorRow", "UBoard_LineEvaluatorColumn", "UBoard_LineEvaluatorForwardDiagonal",  "UBoard_LineEvaluatorBackDiagonal" };
+    FBoardEvaluationData BoardEval;
 
-    for (FString LineType : LineTypes)
+    for (int i = 0; i < 2; i++)
     {
-        UBoard_LineEvaluator* LineEvaluator = UBoard_LineEvaluator::Create(LineType, this);
-
-        UBoard_Line *Line = LineEvaluator->GetNextLine();
-        while (Line)
-        {
-            int CurrentTeamIdx = -1;
-            int CurrentTeamConcecutiveSpaces = 0;
-
-            ABoardSpaceBase *CurrentSpace = Line->GetNextSpace();
-
-            while (CurrentSpace)
-            {
-                if (CurrentSpace->ClaimedTeamIdx == -1)
-                {
-                    CurrentTeamIdx = -1;
-                    CurrentTeamConcecutiveSpaces = 0;
-                    CurrentSpace = Line->GetNextSpace();
-                    continue;
-                }
-
-                if (CurrentSpace->ClaimedTeamIdx == CurrentTeamIdx)
-                {
-                    CurrentTeamConcecutiveSpaces++;
-                }
-                else
-                {
-                    CurrentTeamIdx = CurrentSpace->ClaimedTeamIdx;
-                    CurrentTeamConcecutiveSpaces = 1;
-                }
-
-                if (CurrentTeamConcecutiveSpaces == K)
-                {
-                    return CurrentTeamIdx;
-                }
-
-                CurrentSpace = Line->GetNextSpace();
-            }
-
-            Line = LineEvaluator->GetNextLine();
-        }
-    }
-
-    return -1;
-}
-
-UBoardEvaluationData* ABoard_GravityOff::AIEvaluateBoard()
-{
-    for (UTeamBoardEvaluationData* TeamData : EvaluationData->AllTeamEvaluationData)
-    {
-        TeamData->Init();
+        Mutex.Lock();
+        BoardEval.AllTeamEvaluationData[i].IndexedSpaceGroups.Init(FSpaceGroups(), K + 1);
+        Mutex.Unlock();
     }
 
     FString LineTypes[] = { "UBoard_LineEvaluatorRow", "UBoard_LineEvaluatorColumn", "UBoard_LineEvaluatorForwardDiagonal",  "UBoard_LineEvaluatorBackDiagonal" };
-
     for (FString LineType : LineTypes)
     {
         UBoard_LineEvaluator* LineEvaluator = UBoard_LineEvaluator::Create(LineType, this);
-
         UBoard_Line* Line = LineEvaluator->GetNextLine();
         while (Line)
         {
-            TArray<ABoardSpaceBase*> KGroup;
+            TQueue<ABoardSpaceBase*> GroupWindow;
+            int GroupWindowLength = 0;
+            int TeamSpacesCount[2] = { 0, 0 };
 
             ABoardSpaceBase* CurrentSpace = Line->GetNextSpace();
             while (CurrentSpace)
             {
-                KGroup.Add(CurrentSpace);
-
-                if (KGroup.Num() > K)
+                GroupWindow.Enqueue(CurrentSpace);
+                if (CurrentSpace->ClaimedTeamIdx != -1)
                 {
-                    KGroup.RemoveAt(0);
+                    TeamSpacesCount[CurrentSpace->ClaimedTeamIdx]++;
                 }
 
-                if (KGroup.Num() == K)
+                if (GroupWindowLength < K)
                 {
-                    int OwningTeamIdx = -1;
+                    GroupWindowLength++;
+                }
+                else
+                {
+                    ABoardSpaceBase* DequeuedSpace;
+                    GroupWindow.Dequeue(DequeuedSpace);
 
-                    for (int KGroupIdx = 0; KGroupIdx < KGroup.Num(); KGroupIdx++)
+                    if (DequeuedSpace->ClaimedTeamIdx != -1)
                     {
-                        if (OwningTeamIdx != -1 && KGroup[KGroupIdx]->ClaimedTeamIdx != OwningTeamIdx)
-                        {
-                            OwningTeamIdx = -1;
-                            break;
-                        }
+                        TeamSpacesCount[DequeuedSpace->ClaimedTeamIdx]--;
+                    }
+                }
 
-                        if (OwningTeamIdx == -1 && KGroup[KGroupIdx]->ClaimedTeamIdx != -1)
-                        {
-                            OwningTeamIdx = KGroup[KGroupIdx]->ClaimedTeamIdx;
-                        }
+                if (GroupWindowLength == K && (!TeamSpacesCount[0] != !TeamSpacesCount[1]))
+                {
+                    int GroupTeamIdx = TeamSpacesCount[0] ? 0 : 1;
+
+                    if (TeamSpacesCount[GroupTeamIdx] == K)
+                    {
+                        BoardEval.BoardWinner = GroupTeamIdx;
                     }
 
-                    if (OwningTeamIdx != -1)
+                    FSpaceGroup SpaceGroup;
+                    for (int i = 1; i <= K; i++)
                     {
-                        FBoardSpaceGroup NewSpaceGroup;
-                        NewSpaceGroup.BoardSpaces.Append(KGroup);
-                        EvaluationData->AllTeamEvaluationData[OwningTeamIdx]->PotentialWinningGroups.Add(NewSpaceGroup);
+                        ABoardSpaceBase* DequeuedSpace;
+                        GroupWindow.Dequeue(DequeuedSpace);
+                        SpaceGroup.SpaceGroup.Add(DequeuedSpace);
+                        GroupWindow.Enqueue(DequeuedSpace);
                     }
+
+                    Mutex.Lock();
+                    BoardEval.AllTeamEvaluationData[GroupTeamIdx].IndexedSpaceGroups[TeamSpacesCount[GroupTeamIdx]].SpaceGroups.Add(SpaceGroup);
+                    Mutex.Unlock();
                 }
 
                 CurrentSpace = Line->GetNextSpace();
@@ -265,203 +225,7 @@ UBoardEvaluationData* ABoard_GravityOff::AIEvaluateBoard()
         }
     }
 
-    GenerateThreatData();
-    GenerateJunctionData();
-
-    return EvaluationData;
-}
-
-void ABoard_GravityOff::GenerateThreatData()
-{
-    for (int AllTeamEvaluationDataIdx = 0; AllTeamEvaluationDataIdx < EvaluationData->AllTeamEvaluationData.Num(); AllTeamEvaluationDataIdx++)
-    {
-        for (FBoardSpaceGroup Group : EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->PotentialWinningGroups)
-        {
-            int FilledSpacesCount = 0;
-            UPROPERTY()
-            ABoardSpaceBase* EmptySpace = Group.BoardSpaces[0];
-            for (ABoardSpaceBase* BoardSpace : Group.BoardSpaces)
-            {
-                if (BoardSpace->ClaimedTeamIdx != -1)
-                {
-                    FilledSpacesCount++;
-                }
-                else
-                {
-                    EmptySpace = BoardSpace;
-                }
-            }
-
-            if (FilledSpacesCount == K - 1 && 
-                EmptySpace->GetRowIdx() != 0 && 
-                GetBoardSquare(EmptySpace->GetRowIdx() - 1, EmptySpace->GetColumnIdx())->ClaimedTeamIdx == -1)
-            {
-                EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->ThreatSpaces.Add(EmptySpace);
-            }
-        }
-    }
-
-    for (int ColumnNumIdx = 0; ColumnNumIdx < ColumnNum; ColumnNumIdx++)
-    {
-        TArray<FBoardSpaceGroup> AllPlayerColumnThreats;
-
-        for (UTeamBoardEvaluationData* TeamEvaluationData : EvaluationData->AllTeamEvaluationData)
-        {
-            FBoardSpaceGroup ThreatsInColumn;
-            for (ABoardSpaceBase* ThreatSpace : TeamEvaluationData->ThreatSpaces)
-            {
-                if (ThreatSpace->GetColumnIdx() == ColumnNumIdx)
-                {
-                    ThreatsInColumn.BoardSpaces.Add(ThreatSpace);
-                }
-            }
-
-            AllPlayerColumnThreats.Add(ThreatsInColumn);
-        }
-
-        for (int AllPlayerColumnThreatsIdx = 0; AllPlayerColumnThreatsIdx < AllPlayerColumnThreats.Num(); AllPlayerColumnThreatsIdx++)
-        {
-            TArray<ABoardSpaceBase*> EnemyPlayerThreats;
-            for (int EnemyPlayerColumnThreatsIdx = 0; EnemyPlayerColumnThreatsIdx < AllPlayerColumnThreats.Num(); EnemyPlayerColumnThreatsIdx++)
-            {
-                if (AllPlayerColumnThreatsIdx == EnemyPlayerColumnThreatsIdx)
-                {
-                    continue;
-                }
-
-                EnemyPlayerThreats.Append(AllPlayerColumnThreats[EnemyPlayerColumnThreatsIdx].BoardSpaces);
-            }
-
-
-            TArray<ABoardSpaceBase*> SharedThreats;
-            for (ABoardSpaceBase* ThreatSpace : AllPlayerColumnThreats[AllPlayerColumnThreatsIdx].BoardSpaces)
-            {
-                for (ABoardSpaceBase* EnemyThreatSpace : EnemyPlayerThreats)
-                {
-                    if (ThreatSpace->GetRowIdx() >= EnemyThreatSpace->GetRowIdx())
-                    {
-                        SharedThreats.Add(ThreatSpace);
-                    }
-                }
-            }
-
-            TArray<ABoardSpaceBase*> UnsharedThreats;
-            for (ABoardSpaceBase* ThreatSpace : AllPlayerColumnThreats[AllPlayerColumnThreatsIdx].BoardSpaces)
-            {
-                if (!SharedThreats.Find(ThreatSpace))
-                {
-                    UnsharedThreats.Add(ThreatSpace);
-                }
-            }
-
-            for (ABoardSpaceBase* UnharedThreat : UnsharedThreats)
-            {
-                if ((UnharedThreat->GetRowIdx() + 1) % 2 == 1)
-                {
-                    EvaluationData->AllTeamEvaluationData[AllPlayerColumnThreatsIdx]->UnsharedOddThreatsNum++;
-                    break;
-                }
-            }
-
-            for (ABoardSpaceBase* UnharedThreat : UnsharedThreats)
-            {
-                if ((UnharedThreat->GetRowIdx() + 1) % 2 == 0)
-                {
-                    EvaluationData->AllTeamEvaluationData[AllPlayerColumnThreatsIdx]->UnsharedEvenThreatsNum++;
-                    break;
-                }
-            }
-
-            for (ABoardSpaceBase* SharedThreat : SharedThreats)
-            {
-                if ((SharedThreat->GetRowIdx() + 1) % 2 == 1)
-                {
-                    EvaluationData->AllTeamEvaluationData[AllPlayerColumnThreatsIdx]->SharedOddThreatsNum++;
-                    break;
-                }
-            }
-
-            for (ABoardSpaceBase* SharedThreat : SharedThreats)
-            {
-                if ((SharedThreat->GetRowIdx() + 1) % 2 == 0)
-                {
-                    EvaluationData->AllTeamEvaluationData[AllPlayerColumnThreatsIdx]->SharedEvenThreatsNum++;
-                    break;
-                }
-            }
-        }
-    }
-}
-
-void ABoard_GravityOff::GenerateJunctionData()
-{
-    for (int AllTeamEvaluationDataIdx = 0; AllTeamEvaluationDataIdx < EvaluationData->AllTeamEvaluationData.Num(); AllTeamEvaluationDataIdx++)
-    {
-        TArray<FBoardSpaceGroup> PotentialJunctionGroups;
-        for (FBoardSpaceGroup Group : EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->PotentialWinningGroups)
-        {
-            int FilledSpaces = 0;
-            for (ABoardSpaceBase* BoardSpace : Group.BoardSpaces)
-            {
-                if (BoardSpace->ClaimedTeamIdx != -1)
-                {
-                    FilledSpaces++;
-                }
-            }
-
-            if (FilledSpaces == K - 2)
-            {
-                PotentialJunctionGroups.Add(Group);
-            }
-        }
-
-        for (int PotentialJunctionGroupsIdx = 0; PotentialJunctionGroupsIdx < PotentialJunctionGroups.Num(); PotentialJunctionGroupsIdx++)
-        {
-            for (int OtherPotentialJunctionGroupsIdx = 0; OtherPotentialJunctionGroupsIdx < PotentialJunctionGroups.Num(); OtherPotentialJunctionGroupsIdx++)
-            {
-                if (PotentialJunctionGroupsIdx == OtherPotentialJunctionGroupsIdx)
-                {
-                    continue;
-                }
-
-                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].BoardSpaces[0] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].BoardSpaces[0])
-                {
-                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].BoardSpaces[0]->ClaimedTeamIdx == -1)
-                    {
-                        EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->bHasEmptyJunction = true;
-                    }
-                    else
-                    {
-                        EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->bHasJunction = true;
-                    }
-                }
-
-                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].BoardSpaces[K - 1] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].BoardSpaces[K - 1])
-                {
-                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].BoardSpaces[K - 1]->ClaimedTeamIdx == -1)
-                    {
-                        EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->bHasEmptyJunction = true;
-                    }
-                    else
-                    {
-                        EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->bHasJunction = true;
-                    }
-                }
-
-                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].BoardSpaces[0] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].BoardSpaces[K - 1])
-                {
-                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].BoardSpaces[0]->ClaimedTeamIdx == -1)
-                    {
-                        EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->bHasEmptyJunction = true;
-                    }
-                    else
-                    {
-                        EvaluationData->AllTeamEvaluationData[AllTeamEvaluationDataIdx]->bHasJunction = true;
-                    }
-                }
-            }
-        }
-    }
+    return BoardEval;
 }
 
 TArray<FIntPoint> ABoard_GravityOff::GetPossibleFutureMoves()

@@ -3,8 +3,8 @@
 #pragma once
 
 #include "BoardSpaceBase.h"
-#include "TeamBoardEvaluationData.h"
-#include "BoardEvaluationData.h"
+//#include "TeamBoardEvaluationData.h"
+//#include "BoardEvaluationData.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Board_GravityOff.generated.h"
@@ -52,6 +52,50 @@ public:
 	TArray<ABoardSpaceBase*> BoardRows;
 };
 
+USTRUCT()
+struct FSpaceGroup
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TArray<ABoardSpaceBase*> SpaceGroup;
+};
+
+USTRUCT()
+struct FSpaceGroups
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TArray<FSpaceGroup> SpaceGroups;
+};
+
+USTRUCT()
+struct FTeamEvaluationData
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TArray<FSpaceGroups> IndexedSpaceGroups;
+};
+
+USTRUCT(BlueprintType)
+struct FBoardEvaluationData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	int BoardWinner = -1;
+
+	UPROPERTY()
+	TArray<FTeamEvaluationData> AllTeamEvaluationData;
+
+	FBoardEvaluationData()
+	{
+		AllTeamEvaluationData.Init(FTeamEvaluationData(), 2);
+	}
+};
+
 class Board_LineEvaluator;
 class Board_Line;
 class AAIControllerBase_GravityOff;
@@ -72,12 +116,9 @@ public:
 	void GenerateNewBoard(int InRowNum, int InColumnNum, int InK);
 	UFUNCTION(BlueprintCallable)
 	ABoardSpaceBase* GetBoardSquare(int RowIdx, int ColumnIdx);
-	UFUNCTION(BlueprintCallable)
-	int EvaluateBoard();
 
-	UBoardEvaluationData* AIEvaluateBoard();
-	void GenerateThreatData();
-	void GenerateJunctionData();
+	UFUNCTION(BlueprintCallable)
+	FBoardEvaluationData EvaluateBoard();
 	virtual TArray<FIntPoint> GetPossibleFutureMoves();
 
 	UFUNCTION(BlueprintCallable)
@@ -144,8 +185,7 @@ protected:
 	TQueue<FBoardAnimData> AnimDataQueue;
 	bool bPlayingAnim;
 
-	UPROPERTY()
-	UBoardEvaluationData* EvaluationData;
+	FCriticalSection Mutex;
 
 public:	
 	// Called every frame

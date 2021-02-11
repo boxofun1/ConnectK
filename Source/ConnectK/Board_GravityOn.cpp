@@ -56,19 +56,21 @@ TArray<FIntPoint> ABoard_GravityOn::GetPossibleFutureMoves()
 			{
 				if (RowNumIdx == 0 && BoardSpaces[RowNumIdx][ColumnIdx]->ClaimedTeamIdx == -1)
 				{
+					Mutex.Lock();
 					PossibleFutureMoves.Add(FIntPoint(ColumnIdx, RowNumIdx));
+					Mutex.Unlock();
 					break;
 				}
 
 				if (BoardSpaces[RowNumIdx][ColumnIdx]->ClaimedTeamIdx != -1)
 				{
+					Mutex.Lock();
 					PossibleFutureMoves.Add(FIntPoint(ColumnIdx, RowNumIdx + 1));
+					Mutex.Unlock();
 					break;
 				}
 			}
 		}
-
-
 	}
 
 	return PossibleFutureMoves;

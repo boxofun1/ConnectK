@@ -45,7 +45,7 @@ void AAIControllerBase_GravityOff::OnSpaceClaimed()
 		AConnectKGameStateBase* CKGameState = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState());
 		NextMove = Async(
 			EAsyncExecution::Thread,
-			[this, Board, TimeInSeconds]() { return AlphaBetaDeepening(Board, 5.0f, TimeInSeconds); },
+			[this, Board, TimeInSeconds]() { return GetNextMove(Board, 5.0f, TimeInSeconds); },
 			[this]() { 
 				AsyncTask(ENamedThreads::GameThread, [this]()
 					{
@@ -62,111 +62,115 @@ void AAIControllerBase_GravityOff::MakeNextMove()
 	Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->ClaimBoardSpace(NextMove.Get().Y, NextMove.Get().X, TeamIdx);
 }
 
-int AAIControllerBase_GravityOff::HFunc(ABoard_GravityOff* Board)
+FAllJunctionData AAIControllerBase_GravityOff::GetJunctionData(const FBoardEvaluationData& EvaluationData)
+{
+	FAllJunctionData AllJunctionData;
+
+	for (int AllTeamEvaluationDataIdx = 0; AllTeamEvaluationDataIdx < EvaluationData.AllTeamEvaluationData.Num(); AllTeamEvaluationDataIdx++)
+    {
+        TArray<FSpaceGroup> PotentialJunctionGroups = EvaluationData.AllTeamEvaluationData[AllTeamEvaluationDataIdx].IndexedSpaceGroups[EvaluationData.AllTeamEvaluationData[AllTeamEvaluationDataIdx].IndexedSpaceGroups.Num() - 3].SpaceGroups;
+
+        for (int PotentialJunctionGroupsIdx = 0; PotentialJunctionGroupsIdx < PotentialJunctionGroups.Num(); PotentialJunctionGroupsIdx++)
+        {
+            for (int OtherPotentialJunctionGroupsIdx = 0; OtherPotentialJunctionGroupsIdx < PotentialJunctionGroups.Num(); OtherPotentialJunctionGroupsIdx++)
+            {
+                if (PotentialJunctionGroupsIdx == OtherPotentialJunctionGroupsIdx)
+                {
+                    continue;
+                }
+
+                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[0])
+                {
+                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0]->ClaimedTeamIdx == -1)
+                    {
+						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasEmptyJunction = true;
+                    }
+                    else
+                    {
+						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasJunction = true;
+                    }
+                }
+
+                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup.Num() - 2] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup.Num() - 2])
+                {
+                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup.Num() - 2]->ClaimedTeamIdx == -1)
+                    {
+						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasEmptyJunction = true;
+                    }
+                    else
+                    {
+						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasJunction = true;
+                    }
+                }
+
+                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup.Num() - 2])
+                {
+                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0]->ClaimedTeamIdx == -1)
+                    {
+						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasEmptyJunction = true;
+                    }
+                    else
+                    {
+						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasJunction = true;
+                    }
+                }
+            }
+        }
+    }
+
+	return AllJunctionData;
+}
+
+int AAIControllerBase_GravityOff::HFunc(const FBoardEvaluationData& EvaluationData)
 {
 	int AITotalScore = 0;
 	int OpponentTotalScore = 0;
 
-	UBoardEvaluationData* BoardEvaluation = Board->AIEvaluateBoard();
+	FAllJunctionData JunctionData = GetJunctionData(EvaluationData);
 
-	if (BoardEvaluation->AllTeamEvaluationData[TeamIdx]->bHasJunction)
+	if (JunctionData.AllJunctions[TeamIdx].bHasJunction)
 	{
 		AITotalScore += 100;
 	}
-	else if (BoardEvaluation->AllTeamEvaluationData[TeamIdx]->bHasEmptyJunction)
+	else if (JunctionData.AllJunctions[TeamIdx].bHasEmptyJunction)
 	{
 		AITotalScore += 50;
 	}
 
-	if (BoardEvaluation->AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0]->bHasJunction)
+	if (JunctionData.AllJunctions[TeamIdx == 0 ? 1 : 0].bHasJunction)
 	{
 		OpponentTotalScore += 100;
 	}
-	else if (BoardEvaluation->AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0]->bHasEmptyJunction)
+	else if (JunctionData.AllJunctions[TeamIdx == 0 ? 1 : 0].bHasEmptyJunction)
 	{
 		OpponentTotalScore += 50;
 	}
 
-	for (int KIdx = 2; KIdx <= Board->GetK(); KIdx++)
+	AddSpaceGroupScore(AITotalScore, TeamIdx, EvaluationData);
+	AddSpaceGroupScore(OpponentTotalScore, TeamIdx == 0 ? 1 : 0, EvaluationData);
+
+	return GetFinalScore(AITotalScore, OpponentTotalScore, EvaluationData);
+
+}
+
+void AAIControllerBase_GravityOff::AddSpaceGroupScore(int& Score, int ScoreTeamIdx, const FBoardEvaluationData& EvaluationData)
+{
+	for (int KIdx = 2; KIdx < EvaluationData.AllTeamEvaluationData[ScoreTeamIdx].IndexedSpaceGroups.Num(); KIdx++)
 	{
-		int GroupsWithKIdxNum = 0;
-		for (FBoardSpaceGroup SpaceGroup : BoardEvaluation->AllTeamEvaluationData[TeamIdx]->PotentialWinningGroups)
-		{
-			int GroupFilledInCount = 0;
-			for (ABoardSpaceBase* BoardSpace : SpaceGroup.BoardSpaces)
-			{
-				if (BoardSpace->ClaimedTeamIdx != -1)
-				{
-					GroupFilledInCount++;
-				}
-			}
+		Score += (EvaluationData.AllTeamEvaluationData[ScoreTeamIdx].IndexedSpaceGroups[KIdx].SpaceGroups.Num() * (KIdx - 1));
+	}
+}
 
-			if (KIdx == GroupFilledInCount)
-			{
-				GroupsWithKIdxNum++;
-			}
-		}
-
-		AITotalScore += (GroupsWithKIdxNum * (KIdx - 1));
+int AAIControllerBase_GravityOff::GetFinalScore(int AITotalScore, int OpponentTotalScore, const FBoardEvaluationData& EvaluationData)
+{
+	if (EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups[EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups.Num() - 1].SpaceGroups.Num() != 0)
+	{
+		return LOSE_VAL;
 	}
 
-	for (int KIdx = 2; KIdx <= Board->GetK(); KIdx++)
+	if (EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups[EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups.Num() - 1].SpaceGroups.Num() != 0)
 	{
-		int GroupsWithKIdxNum = 0;
-		for (FBoardSpaceGroup SpaceGroup : BoardEvaluation->AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0]->PotentialWinningGroups)
-		{
-			int GroupFilledInCount = 0;
-			for (ABoardSpaceBase* BoardSpace : SpaceGroup.BoardSpaces)
-			{
-				if (BoardSpace->ClaimedTeamIdx != -1)
-				{
-					GroupFilledInCount++;
-				}
-			}
-
-			if (KIdx == GroupFilledInCount)
-			{
-				GroupsWithKIdxNum++;
-			}
-		}
-
-		OpponentTotalScore += (GroupsWithKIdxNum * (KIdx - 1));
-	}
-
-	for (FBoardSpaceGroup SpaceGroup : BoardEvaluation->AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0]->PotentialWinningGroups)
-	{
-		int FilledSpaces = 0;
-		for (ABoardSpaceBase* BoardSpace : SpaceGroup.BoardSpaces)
-		{
-			if (BoardSpace->ClaimedTeamIdx != -1)
-			{
-				FilledSpaces++;
-			}
-
-		}
-
-		if (FilledSpaces == Board->GetK())
-		{
-			return LOSE_VAL;
-		}
-	}
-
-	for (FBoardSpaceGroup SpaceGroup : BoardEvaluation->AllTeamEvaluationData[TeamIdx]->PotentialWinningGroups)
-	{
-		int FilledSpaces = 0;
-		for (ABoardSpaceBase* BoardSpace : SpaceGroup.BoardSpaces)
-		{
-			if (BoardSpace->ClaimedTeamIdx != -1)
-			{
-				FilledSpaces++;
-			}
-
-		}
-
-		if (FilledSpaces == Board->GetK())
-		{
-			return WIN_VAL;
-		}
+		return WIN_VAL;
 	}
 
 	if (AITotalScore - OpponentTotalScore == 0)
@@ -184,7 +188,7 @@ int AAIControllerBase_GravityOff::HFunc(ABoard_GravityOff* Board)
 	return AITotalScore - OpponentTotalScore;
 }
 
-FIntPoint AAIControllerBase_GravityOff::AlphaBetaDeepening(ABoard_GravityOff* Board, float MaxTimeInSeconds, float StartTimeInSeconds)
+FIntPoint AAIControllerBase_GravityOff::GetNextMove(ABoard_GravityOff* Board, float MaxTimeInSeconds, float StartTimeInSeconds)
 {
 	TArray<FBoardMove> FoundBoardMoves;
 	FBoardMove BestMove;
@@ -192,10 +196,10 @@ FIntPoint AAIControllerBase_GravityOff::AlphaBetaDeepening(ABoard_GravityOff* Bo
 
 	int TreeDepthLimit = 1;
 
-	while (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds < MaxTimeInSeconds /*&& TreeDepthLimit <= 6*/)
+	while (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds < MaxTimeInSeconds)
 	{
-		//if (GEngine)
-		//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("Reached Depth: %d"), TreeDepthLimit));
+		if (GEngine)
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("Reached Depth: %d"), TreeDepthLimit));
 
 		CurrentMove = FirstMax(Board, NEGATIVE_INFINITY, POSITIVE_INFINITY, TreeDepthLimit, MaxTimeInSeconds, StartTimeInSeconds);
 
@@ -206,25 +210,14 @@ FIntPoint AAIControllerBase_GravityOff::AlphaBetaDeepening(ABoard_GravityOff* Bo
 
 		if (CurrentMove.Value == WIN_VAL)
 		{
-			//if (GEngine)
-			//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("FOUND A WIN!"));
 			return CurrentMove.Point;
 		}
 
-		//if (CurrentMove.Value == LOSE_VAL)
-		//{
-		//	if (GEngine)
-		//		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("GONNA LOSE!"));
-		//}
-
+		Mutex.Lock();
 		FoundBoardMoves.Add(CurrentMove);
+		Mutex.Unlock();
 		TreeDepthLimit++;
 	}
-
-	//if (GEngine)
-	//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("Ran out of time!"));
-
-	//GetWorld()->ForceGarbageCollection(true);
 
 	if (FoundBoardMoves[FoundBoardMoves.Num() - 1].Value == LOSE_VAL)
 	{
@@ -257,36 +250,19 @@ FBoardMove AAIControllerBase_GravityOff::FirstMax(ABoard_GravityOff* Board, int 
 
 		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx);
 
-		int WinningTeamIdx = Board->EvaluateBoard();
-		if (WinningTeamIdx == TeamIdx)
-		{
-			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
-			return FBoardMove(WIN_VAL, PossibleMove);
-		}
-		else if (WinningTeamIdx != TeamIdx && WinningTeamIdx != -1)
-		{
-			v = FMath::Max(v, LOSE_VAL);
-		}
-		else if (Board->RemainingSpaces <= 0)
-		{
-			v = FMath::Max(v, 0);
-		}
-		else
-		{
-			v = FMath::Max(v, MinVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds));
-		}
-
-		if (v == WIN_VAL)
-		{
-			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
-			return FBoardMove(WIN_VAL, PossibleMove);
-		}
-
-		if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds >= MaxTimeInSeconds)
+		int Min = MinVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
+		if (Min == CANCEL_VAL)
 		{
 			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return FBoardMove(CANCEL_VAL, FIntPoint(0.0f, 0.0f));
 		}
+		if (Min == WIN_VAL)
+		{
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
+			return FBoardMove(WIN_VAL, PossibleMove);
+		}
+
+		v = FMath::Max(v, Min);
 
 		if (v > Alpha)
 		{
@@ -306,10 +282,33 @@ int AAIControllerBase_GravityOff::MaxVal(ABoard_GravityOff* Board, int Alpha, in
 
 	//if (GEngine)
 	//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("IN MAX"));
-
-	if (MaxSearchDepth <= 0)
+	if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds >= MaxTimeInSeconds)
 	{
-		return HFunc(Board);
+		return CANCEL_VAL;
+	}
+
+	{
+		FBoardEvaluationData EvaluationData = Board->EvaluateBoard();
+
+		if (EvaluationData.BoardWinner == TeamIdx)
+		{
+			return WIN_VAL;
+		}
+
+		if (EvaluationData.BoardWinner != TeamIdx && EvaluationData.BoardWinner != -1)
+		{
+			return LOSE_VAL;
+		}
+
+		if (Board->RemainingSpaces <= 0)
+		{
+			return 0;
+		}
+
+		if (MaxSearchDepth <= 0)
+		{
+			return HFunc(EvaluationData);
+		}
 	}
 
 	int v = NEGATIVE_INFINITY;
@@ -317,32 +316,22 @@ int AAIControllerBase_GravityOff::MaxVal(ABoard_GravityOff* Board, int Alpha, in
 	TArray<FIntPoint> PossibleMoveCoordinates = Board->GetPossibleFutureMoves();
 	for (FIntPoint &PossibleMove : PossibleMoveCoordinates)
 	{
-		if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds >= MaxTimeInSeconds)
+		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx);
+
+		int Min = MinVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
+		if (Min == CANCEL_VAL)
 		{
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return CANCEL_VAL;
 		}
 
-		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx);
-
-		int WinningTeamIdx = Board->EvaluateBoard();
-		if (WinningTeamIdx == TeamIdx)
+		if (Min == WIN_VAL)
 		{
 			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return WIN_VAL;
 		}
-		else if (WinningTeamIdx != TeamIdx && WinningTeamIdx != -1)
-		{
-			v = FMath::Max(v, LOSE_VAL);
-		}
-		else if (Board->RemainingSpaces <= 0)
-		{
-			v = FMath::Max(v, 0);
-		}
-		else
-		{
-			v = FMath::Max(v, MinVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds));
-		}
 
+		v = FMath::Max(v, Min);
 
 		if (v >= Beta)
 		{
@@ -363,10 +352,32 @@ int AAIControllerBase_GravityOff::MinVal(ABoard_GravityOff* Board, int Alpha, in
 
 	//if (GEngine)
 	//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("IN MIN"));
-
-	if (MaxSearchDepth <= 0)
+	if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds >= MaxTimeInSeconds)
 	{
-		return HFunc(Board);
+		return CANCEL_VAL;
+	}
+
+	{
+		FBoardEvaluationData EvaluationData = Board->EvaluateBoard();
+		if (EvaluationData.BoardWinner == TeamIdx)
+		{
+			return WIN_VAL;
+		}
+
+		if (EvaluationData.BoardWinner != TeamIdx && EvaluationData.BoardWinner != -1)
+		{
+			return LOSE_VAL;
+		}
+
+		if (Board->RemainingSpaces <= 0)
+		{
+			return 0;
+		}
+
+		if (MaxSearchDepth <= 0)
+		{
+			return HFunc(EvaluationData);
+		}
 	}
 
 	int v = POSITIVE_INFINITY;
@@ -374,32 +385,22 @@ int AAIControllerBase_GravityOff::MinVal(ABoard_GravityOff* Board, int Alpha, in
 	TArray<FIntPoint> PossibleMoveCoordinates = Board->GetPossibleFutureMoves();
 	for (FIntPoint &PossibleMove : PossibleMoveCoordinates)
 	{
-		if (UGameplayStatics::GetRealTimeSeconds(GetWorld()) - StartTimeInSeconds >= MaxTimeInSeconds)
+		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx == 0 ? 1 : 0);
+
+		int Max = MaxVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
+		if (Max == CANCEL_VAL)
 		{
+			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return CANCEL_VAL;
 		}
 
-		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx == 0 ? 1 : 0);
-
-		int WinningTeamIdx = Board->EvaluateBoard();
-		if (WinningTeamIdx != TeamIdx && WinningTeamIdx != -1)
+		if (Max == LOSE_VAL)
 		{
 			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
 			return LOSE_VAL;
 		}
-		else if (WinningTeamIdx == TeamIdx)
-		{
-			v = FMath::Min(v, WIN_VAL);
-		}
-		else if (Board->RemainingSpaces <= 0)
-		{
-			v = FMath::Min(v, 0);
-		}
-		else
-		{
-			v = FMath::Min(v, MaxVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds));
-		}
 
+		v = FMath::Min(v, Max);
 
 		if (v <= Alpha)
 		{

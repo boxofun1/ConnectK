@@ -6,7 +6,27 @@
 #include "AIControllerBase_GravityOff.h"
 #include "AIControllerBase_GravityOn.generated.h"
 
-class ABoard_GravityOff;
+USTRUCT()
+struct FTeamThreatData
+{
+	GENERATED_BODY()
+
+	int UnsharedOddThreatsNum = 0;
+	int UnsharedEvenThreatsNum = 0;
+
+	int SharedOddThreatsNum = 0;
+	int SharedEvenThreatsNum = 0;
+};
+
+USTRUCT()
+struct FAllThreatData
+{
+	GENERATED_BODY()
+
+	FTeamThreatData AllThreats[2];
+};
+
+struct FBoardEvaluationData;
 /**
  * 
  */
@@ -16,5 +36,6 @@ class CONNECTK_API AAIControllerBase_GravityOn : public AAIControllerBase_Gravit
 	GENERATED_BODY()
 	
 public:
-	virtual int HFunc(ABoard_GravityOff* Board);
+	virtual int HFunc(const FBoardEvaluationData& EvaluationData);
+	FAllThreatData GetThreatData(const FBoardEvaluationData& EvaluationData);
 };
