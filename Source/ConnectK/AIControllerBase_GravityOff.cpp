@@ -79,41 +79,9 @@ FAllJunctionData AAIControllerBase_GravityOff::GetJunctionData(const FBoardEvalu
                     continue;
                 }
 
-                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[0])
-                {
-                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0]->ClaimedTeamIdx == -1)
-                    {
-						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasEmptyJunction = true;
-                    }
-                    else
-                    {
-						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasJunction = true;
-                    }
-                }
-
-                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup.Num() - 2] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup.Num() - 2])
-                {
-                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup.Num() - 2]->ClaimedTeamIdx == -1)
-                    {
-						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasEmptyJunction = true;
-                    }
-                    else
-                    {
-						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasJunction = true;
-                    }
-                }
-
-                if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0] == PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup.Num() - 2])
-                {
-                    if (PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0]->ClaimedTeamIdx == -1)
-                    {
-						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasEmptyJunction = true;
-                    }
-                    else
-                    {
-						AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx].bHasJunction = true;
-                    }
-                }
+				SetJunction(AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx], PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0], PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[0]);
+				SetJunction(AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx], PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup.Num() - 2], PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup.Num() - 2]);
+				SetJunction(AllJunctionData.AllJunctions[AllTeamEvaluationDataIdx], PotentialJunctionGroups[PotentialJunctionGroupsIdx].SpaceGroup[0], PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup[PotentialJunctionGroups[OtherPotentialJunctionGroupsIdx].SpaceGroup.Num() - 2]);
             }
         }
     }
@@ -121,36 +89,53 @@ FAllJunctionData AAIControllerBase_GravityOff::GetJunctionData(const FBoardEvalu
 	return AllJunctionData;
 }
 
+void AAIControllerBase_GravityOff::SetJunction(FTeamJunctionData& JunctionData, const ABoardSpaceBase* BoardSpace, const ABoardSpaceBase* OtherBoardSpace)
+{
+	if (BoardSpace == OtherBoardSpace)
+	{
+		if (BoardSpace->ClaimedTeamIdx == -1)
+		{
+			JunctionData.bHasEmptyJunction = true;
+		}
+		else
+		{
+			JunctionData.bHasJunction = true;
+		}
+	}
+}
+
 int AAIControllerBase_GravityOff::HFunc(const FBoardEvaluationData& EvaluationData)
 {
 	int AITotalScore = 0;
 	int OpponentTotalScore = 0;
 
-	FAllJunctionData JunctionData = GetJunctionData(EvaluationData);
-
-	if (JunctionData.AllJunctions[TeamIdx].bHasJunction)
-	{
-		AITotalScore += 100;
-	}
-	else if (JunctionData.AllJunctions[TeamIdx].bHasEmptyJunction)
-	{
-		AITotalScore += 50;
-	}
-
-	if (JunctionData.AllJunctions[TeamIdx == 0 ? 1 : 0].bHasJunction)
-	{
-		OpponentTotalScore += 100;
-	}
-	else if (JunctionData.AllJunctions[TeamIdx == 0 ? 1 : 0].bHasEmptyJunction)
-	{
-		OpponentTotalScore += 50;
-	}
+	AddJunctionScore(EvaluationData, AITotalScore, OpponentTotalScore);
 
 	AddSpaceGroupScore(AITotalScore, TeamIdx, EvaluationData);
 	AddSpaceGroupScore(OpponentTotalScore, TeamIdx == 0 ? 1 : 0, EvaluationData);
 
 	return GetFinalScore(AITotalScore, OpponentTotalScore, EvaluationData);
 
+}
+
+void AAIControllerBase_GravityOff::AddJunctionScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore)
+{
+	FAllJunctionData JunctionData = GetJunctionData(EvaluationData);
+
+	AddTeamJunctionScore(JunctionData.AllJunctions[TeamIdx], AITotalScore);
+	AddTeamJunctionScore(JunctionData.AllJunctions[TeamIdx == 0 ? 1 : 0], OpponentTotalScore);
+}
+
+void AAIControllerBase_GravityOff::AddTeamJunctionScore(const FTeamJunctionData& TeamJunctionData, int& Score)
+{
+	if (TeamJunctionData.bHasJunction)
+	{
+		Score += 100;
+	}
+	else if (TeamJunctionData.bHasEmptyJunction)
+	{
+		Score += 50;
+	}
 }
 
 void AAIControllerBase_GravityOff::AddSpaceGroupScore(int& Score, int ScoreTeamIdx, const FBoardEvaluationData& EvaluationData)
@@ -163,26 +148,15 @@ void AAIControllerBase_GravityOff::AddSpaceGroupScore(int& Score, int ScoreTeamI
 
 int AAIControllerBase_GravityOff::GetFinalScore(int AITotalScore, int OpponentTotalScore, const FBoardEvaluationData& EvaluationData)
 {
-	if (EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups[EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups.Num() - 1].SpaceGroups.Num() != 0)
+	int K = EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups.Num() - 1;
+	if (!EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups[K].SpaceGroups.Num() != !EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups[K].SpaceGroups.Num())
 	{
-		return LOSE_VAL;
+		return EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups[K].SpaceGroups.Num() ? LOSE_VAL : WIN_VAL;
 	}
 
-	if (EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups[EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups.Num() - 1].SpaceGroups.Num() != 0)
+	if (!(AITotalScore - OpponentTotalScore))
 	{
-		return WIN_VAL;
-	}
-
-	if (AITotalScore - OpponentTotalScore == 0)
-	{
-		if (TeamIdx == 1)
-		{
-			return 1;
-		}
-		else
-		{
-			return -1;
-		}
+		return TeamIdx == 1 ? 1 : -1;
 	}
 
 	return AITotalScore - OpponentTotalScore;

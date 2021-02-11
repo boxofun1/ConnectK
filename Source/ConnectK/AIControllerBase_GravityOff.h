@@ -43,6 +43,7 @@ struct FAllJunctionData
 };
 
 class ABoard_GravityOff;
+class ABoardSpaceBase;
 struct FBoardEvaluationData;
 /**
  * 
@@ -67,6 +68,9 @@ public:
 	FAllJunctionData GetJunctionData(const FBoardEvaluationData& EvaluationData);
 	void AddSpaceGroupScore(int& Score, int TeamIdx, const FBoardEvaluationData& EvaluationData);
 	int GetFinalScore(int AITotalScore, int OpponentTotalScore, const FBoardEvaluationData& EvaluationData);
+	void SetJunction(FTeamJunctionData& JunctionData, const ABoardSpaceBase* BoardSpace, const ABoardSpaceBase* OtherBoardSpace);
+	void AddJunctionScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore);
+	void AddTeamJunctionScore(const FTeamJunctionData& TeamJunctionData, int& Score);
 
 	FIntPoint GetNextMove(ABoard_GravityOff* Board, float MaxTimeInSeconds, float StartTimeInSeconds);
 	FBoardMove FirstMax(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
