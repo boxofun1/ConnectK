@@ -27,6 +27,7 @@ struct FAllThreatData
 };
 
 struct FBoardEvaluationData;
+struct FSpaceGroup;
 /**
  * 
  */
@@ -36,6 +37,11 @@ class CONNECTK_API AAIControllerBase_GravityOn : public AAIControllerBase_Gravit
 	GENERATED_BODY()
 	
 public:
-	virtual int HFunc(const FBoardEvaluationData& EvaluationData);
+	virtual void AddGameModeScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore);
 	FAllThreatData GetThreatData(const FBoardEvaluationData& EvaluationData);
+	TArray<FSpaceGroup> GetAllThreatSpaces(const FBoardEvaluationData& EvaluationData);
+	TArray<FSpaceGroup> GetAllPlayerColumnThreats(TArray<FSpaceGroup>& AllThreatSpaces, int ColumnIdx);
+	TArray<ABoardSpaceBase*> GetSharedThreats(TArray<ABoardSpaceBase*>& PlayerThreats, TArray<ABoardSpaceBase*>& EnemyThreats);
+	TArray<ABoardSpaceBase*> GetUnsharedThreats(TArray<ABoardSpaceBase*>& PlayerThreats, TArray<ABoardSpaceBase*>& SharedThreats);
+	void IncrementRowThreat(TArray<ABoardSpaceBase*>& Threats, bool bOdd, int& ThreatsNum);
 };

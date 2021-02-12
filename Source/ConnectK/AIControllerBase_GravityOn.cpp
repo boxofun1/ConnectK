@@ -6,10 +6,13 @@
 #include "Board_GravityOff.h"
 #include "BoardSpaceBase.h"
 
-FAllThreatData AAIControllerBase_GravityOn::GetThreatData(const FBoardEvaluationData& EvaluationData)
+TArray<FSpaceGroup> AAIControllerBase_GravityOn::GetAllThreatSpaces(const FBoardEvaluationData& EvaluationData)
 {
-    FAllThreatData ThreatData;
     TArray<FSpaceGroup> AllThreatSpaces;
+
+    Mutex.Lock();
+    ABoard_GravityOff* Board = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->Board;
+    Mutex.Unlock();
 
     for (int i = 0; i < EvaluationData.AllTeamEvaluationData.Num(); i++)
     {
@@ -20,7 +23,7 @@ FAllThreatData AAIControllerBase_GravityOn::GetThreatData(const FBoardEvaluation
         {
             for (ABoardSpaceBase* BoardSpace : SpaceGroup.SpaceGroup)
             {
-                if (BoardSpace->ClaimedTeamIdx == -1)
+                if (BoardSpace->ClaimedTeamIdx == -1 && BoardSpace->GetRowIdx() != 0 && Board->GetBoardSquare(BoardSpace->GetRowIdx() - 1, BoardSpace->GetColumnIdx())->ClaimedTeamIdx == -1)
                 {
                     Mutex.Lock();
                     PlayerThreats.SpaceGroup.Add(BoardSpace);
@@ -34,133 +37,118 @@ FAllThreatData AAIControllerBase_GravityOn::GetThreatData(const FBoardEvaluation
         Mutex.Unlock();
     }
 
+    return AllThreatSpaces;
+}
+
+TArray<FSpaceGroup> AAIControllerBase_GravityOn::GetAllPlayerColumnThreats(TArray<FSpaceGroup>& AllThreatSpaces, int ColumnIdx)
+{
+    TArray<FSpaceGroup> AllPlayerColumnThreats;
+
+    for (FSpaceGroup& TeamThreatSpaces : AllThreatSpaces)
+    {
+        FSpaceGroup ThreatsInColumn;
+        for (ABoardSpaceBase* ThreatSpace : TeamThreatSpaces.SpaceGroup)
+        {
+            if (ThreatSpace->GetColumnIdx() == ColumnIdx)
+            {
+                Mutex.Lock();
+                ThreatsInColumn.SpaceGroup.Add(ThreatSpace);
+                Mutex.Unlock();
+            }
+        }
+
+        Mutex.Lock();
+        AllPlayerColumnThreats.Add(ThreatsInColumn);
+        Mutex.Unlock();
+    }
+
+    return AllPlayerColumnThreats;
+}
+
+TArray<ABoardSpaceBase*> AAIControllerBase_GravityOn::GetSharedThreats(TArray<ABoardSpaceBase*>& PlayerThreats, TArray<ABoardSpaceBase*>& EnemyThreats)
+{
+    TArray<ABoardSpaceBase*> SharedThreats;
+    for (ABoardSpaceBase* ThreatSpace : PlayerThreats)
+    {
+        for (ABoardSpaceBase* EnemyThreatSpace : EnemyThreats)
+        {
+            if (ThreatSpace->GetRowIdx() >= EnemyThreatSpace->GetRowIdx())
+            {
+                Mutex.Lock();
+                SharedThreats.Add(ThreatSpace);
+                Mutex.Unlock();
+            }
+        }
+    }
+
+    return SharedThreats;
+}
+
+TArray<ABoardSpaceBase*> AAIControllerBase_GravityOn::GetUnsharedThreats(TArray<ABoardSpaceBase*>& PlayerThreats, TArray<ABoardSpaceBase*>& SharedThreats)
+{
+    TArray<ABoardSpaceBase*> UnsharedThreats;
+    for (ABoardSpaceBase* ThreatSpace : PlayerThreats)
+    {
+        if (!SharedThreats.Find(ThreatSpace))
+        {
+            Mutex.Lock();
+            UnsharedThreats.Add(ThreatSpace);
+            Mutex.Unlock();
+        }
+    }
+
+    return UnsharedThreats;
+}
+
+void AAIControllerBase_GravityOn::IncrementRowThreat(TArray<ABoardSpaceBase*>& Threats, bool bOdd, int &ThreatsNum)
+{
+    for (ABoardSpaceBase* Threat : Threats)
+    {
+        bool bIncrement = bOdd ? (Threat->GetRowIdx() + 1) % 2 == 1 : (Threat->GetRowIdx() + 1) % 2 == 0;
+        if (bIncrement)
+        {
+            ThreatsNum++;
+            break;
+        }
+    }
+}
+
+FAllThreatData AAIControllerBase_GravityOn::GetThreatData(const FBoardEvaluationData& EvaluationData)
+{
+    FAllThreatData ThreatData;
+    TArray<FSpaceGroup> AllThreatSpaces = GetAllThreatSpaces(EvaluationData);
+
     Mutex.Lock();
     int ColumnNum = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->Board->GetColumnNum();
     Mutex.Unlock();
 
     for (int ColumnNumIdx = 0; ColumnNumIdx < ColumnNum; ColumnNumIdx++)
     {
-        TArray<FSpaceGroup> AllPlayerColumnThreats;
+        TArray<FSpaceGroup> AllPlayerColumnThreats = GetAllPlayerColumnThreats(AllThreatSpaces, ColumnNumIdx);
 
-        for (FSpaceGroup& TeamEvaluationData : AllThreatSpaces)
-        {
-            FSpaceGroup ThreatsInColumn;
-            for (ABoardSpaceBase* ThreatSpace : TeamEvaluationData.SpaceGroup)
-            {
-                if (ThreatSpace->GetColumnIdx() == ColumnNumIdx)
-                {
-                    Mutex.Lock();
-                    ThreatsInColumn.SpaceGroup.Add(ThreatSpace);
-                    Mutex.Unlock();
-                }
-            }
-
-            Mutex.Lock();
-            AllPlayerColumnThreats.Add(ThreatsInColumn);
-            Mutex.Unlock();
-        }
-
-        //Goes through every player
         for (int AllPlayerColumnThreatsIdx = 0; AllPlayerColumnThreatsIdx < AllPlayerColumnThreats.Num(); AllPlayerColumnThreatsIdx++)
         {
-            //gets all enemy player threats
-            TArray<ABoardSpaceBase*> EnemyPlayerThreats;
-            for (int EnemyPlayerColumnThreatsIdx = 0; EnemyPlayerColumnThreatsIdx < AllPlayerColumnThreats.Num(); EnemyPlayerColumnThreatsIdx++)
-            {
-                if (AllPlayerColumnThreatsIdx == EnemyPlayerColumnThreatsIdx)
-                {
-                    continue;
-                }
+            TArray<ABoardSpaceBase*>& EnemyPlayerThreats = AllPlayerColumnThreatsIdx == 0 ? AllPlayerColumnThreats[1].SpaceGroup : AllPlayerColumnThreats[0].SpaceGroup;
+            TArray<ABoardSpaceBase*> SharedThreats = GetSharedThreats(AllPlayerColumnThreats[AllPlayerColumnThreatsIdx].SpaceGroup, EnemyPlayerThreats);
+            TArray<ABoardSpaceBase*> UnsharedThreats = GetUnsharedThreats(AllPlayerColumnThreats[AllPlayerColumnThreatsIdx].SpaceGroup, SharedThreats);
 
-                Mutex.Lock();
-                EnemyPlayerThreats.Append(AllPlayerColumnThreats[EnemyPlayerColumnThreatsIdx].SpaceGroup);
-                Mutex.Unlock();
-            }
-
-            //Gets all shared threats
-            //If threat is above (or equal to) enemy threat, it is shared
-            TArray<ABoardSpaceBase*> SharedThreats;
-            for (ABoardSpaceBase* ThreatSpace : AllPlayerColumnThreats[AllPlayerColumnThreatsIdx].SpaceGroup)
-            {
-                for (ABoardSpaceBase* EnemyThreatSpace : EnemyPlayerThreats)
-                {
-                    if (ThreatSpace->GetRowIdx() >= EnemyThreatSpace->GetRowIdx())
-                    {
-                        Mutex.Lock();
-                        SharedThreats.Add(ThreatSpace);
-                        Mutex.Unlock();
-                    }
-                }
-            }
-
-            //Gets all unshared threats
-            //If threat isnt found in shared threats, it's unshared
-            TArray<ABoardSpaceBase*> UnsharedThreats;
-            for (ABoardSpaceBase* ThreatSpace : AllPlayerColumnThreats[AllPlayerColumnThreatsIdx].SpaceGroup)
-            {
-                if (!SharedThreats.Find(ThreatSpace))
-                {
-                    Mutex.Lock();
-                    UnsharedThreats.Add(ThreatSpace);
-                    Mutex.Unlock();
-                }
-            }
-
-            //Add all unshared odd threats
-            for (ABoardSpaceBase* UnsharedThreat : UnsharedThreats)
-            {
-                if ((UnsharedThreat->GetRowIdx() + 1) % 2 == 1)
-                {
-                    ThreatData.AllThreats[AllPlayerColumnThreatsIdx].UnsharedOddThreatsNum++;
-                    break;
-                }
-            }
-
-            //Add all unshared even threats
-            for (ABoardSpaceBase* UnsharedThreat : UnsharedThreats)
-            {
-                if ((UnsharedThreat->GetRowIdx() + 1) % 2 == 0)
-                {
-                    ThreatData.AllThreats[AllPlayerColumnThreatsIdx].UnsharedEvenThreatsNum++;
-                    break;
-                }
-            }
-
-            //Add all shared odd threats
-            for (ABoardSpaceBase* SharedThreat : SharedThreats)
-            {
-                if ((SharedThreat->GetRowIdx() + 1) % 2 == 1)
-                {
-                    ThreatData.AllThreats[AllPlayerColumnThreatsIdx].SharedOddThreatsNum++;
-                    break;
-                }
-            }
-
-            //Add all shared even threats
-            for (ABoardSpaceBase* SharedThreat : SharedThreats)
-            {
-                if ((SharedThreat->GetRowIdx() + 1) % 2 == 0)
-                {
-                    ThreatData.AllThreats[AllPlayerColumnThreatsIdx].SharedEvenThreatsNum++;
-                    break;
-                }
-            }
+            IncrementRowThreat(UnsharedThreats, true, ThreatData.AllThreats[AllPlayerColumnThreatsIdx].UnsharedOddThreatsNum);
+            IncrementRowThreat(UnsharedThreats, false, ThreatData.AllThreats[AllPlayerColumnThreatsIdx].UnsharedEvenThreatsNum);
+            IncrementRowThreat(SharedThreats, true, ThreatData.AllThreats[AllPlayerColumnThreatsIdx].SharedOddThreatsNum);
+            IncrementRowThreat(SharedThreats, false, ThreatData.AllThreats[AllPlayerColumnThreatsIdx].SharedEvenThreatsNum);
         }
     }
 
 	return ThreatData;
 }
 
-int AAIControllerBase_GravityOn::HFunc(const FBoardEvaluationData& EvaluationData)
+void AAIControllerBase_GravityOn::AddGameModeScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore)
 {
-	int AITotalScore = 0;
-	int OpponentTotalScore = 0;
-
-    Mutex.Lock();
+	Mutex.Lock();
 	AConnectKGameStateBase* GameState = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState());
-    Mutex.Unlock();
+	Mutex.Unlock();
 	ABoard_GravityOff* Board = GameState->Board;
-    FAllThreatData AllThreatData = GetThreatData(EvaluationData);
+	FAllThreatData AllThreatData = GetThreatData(EvaluationData);
 
 	int Domain = Board->GetRowNum() * Board->GetColumnNum();
 	int FirstPlayerTotal = 0;
@@ -226,38 +214,4 @@ int AAIControllerBase_GravityOn::HFunc(const FBoardEvaluationData& EvaluationDat
 
 	AITotalScore += TeamIdx == FirstPlayerTeamIdx ? FirstPlayerTotal : SecondPlayerTotal;
 	OpponentTotalScore += TeamIdx == FirstPlayerTeamIdx ? SecondPlayerTotal : FirstPlayerTotal;
-
-	for (int KIdx = 2; KIdx < EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups.Num(); KIdx++)
-	{
-		AITotalScore += (EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups[KIdx].SpaceGroups.Num() * (KIdx - 1));
-	}
-
-	for (int KIdx = 2; KIdx < EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups.Num(); KIdx++)
-	{
-		OpponentTotalScore += (EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups[KIdx].SpaceGroups.Num() * (KIdx - 1));
-	}
-
-	if (EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups[EvaluationData.AllTeamEvaluationData[TeamIdx == 0 ? 1 : 0].IndexedSpaceGroups.Num() - 1].SpaceGroups.Num() != 0)
-	{
-		return LOSE_VAL;
-	}
-
-	if (EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups[EvaluationData.AllTeamEvaluationData[TeamIdx].IndexedSpaceGroups.Num() - 1].SpaceGroups.Num() != 0)
-	{
-		return WIN_VAL;
-	}
-
-	if (AITotalScore - OpponentTotalScore == 0)
-	{
-		if (TeamIdx == 1)
-		{
-			return 1;
-		}
-		else
-		{
-			return -1;
-		}
-	}
-
-	return AITotalScore - OpponentTotalScore;
 }

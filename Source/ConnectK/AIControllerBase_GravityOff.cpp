@@ -109,13 +109,17 @@ int AAIControllerBase_GravityOff::HFunc(const FBoardEvaluationData& EvaluationDa
 	int AITotalScore = 0;
 	int OpponentTotalScore = 0;
 
-	AddJunctionScore(EvaluationData, AITotalScore, OpponentTotalScore);
+	AddGameModeScore(EvaluationData, AITotalScore, OpponentTotalScore);
 
 	AddSpaceGroupScore(AITotalScore, TeamIdx, EvaluationData);
 	AddSpaceGroupScore(OpponentTotalScore, TeamIdx == 0 ? 1 : 0, EvaluationData);
 
 	return GetFinalScore(AITotalScore, OpponentTotalScore, EvaluationData);
+}
 
+void AAIControllerBase_GravityOff::AddGameModeScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore)
+{
+	AddJunctionScore(EvaluationData, AITotalScore, OpponentTotalScore);
 }
 
 void AAIControllerBase_GravityOff::AddJunctionScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore)

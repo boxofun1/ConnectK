@@ -71,12 +71,13 @@ public:
 	void SetJunction(FTeamJunctionData& JunctionData, const ABoardSpaceBase* BoardSpace, const ABoardSpaceBase* OtherBoardSpace);
 	void AddJunctionScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore);
 	void AddTeamJunctionScore(const FTeamJunctionData& TeamJunctionData, int& Score);
+	virtual void AddGameModeScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore);
 
 	FIntPoint GetNextMove(ABoard_GravityOff* Board, float MaxTimeInSeconds, float StartTimeInSeconds);
 	FBoardMove FirstMax(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
 	int MaxVal(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
 	int MinVal(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
-	virtual int HFunc(const FBoardEvaluationData &EvaluationData);
+	int HFunc(const FBoardEvaluationData &EvaluationData);
 
 
 protected:
