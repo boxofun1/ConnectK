@@ -19,47 +19,51 @@ void AAIControllerBase_GravityOff::BeginPlay()
 	Super::BeginPlay();
 
 	TeamIdx = 1;
-	Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->BoardCreatedDelegateProp.AddDynamic(this, &AAIControllerBase_GravityOff::OnBoardCreated);
+	CKGameState = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState());
+	CKGameState->BoardCreatedDelegateProp.AddDynamic(this, &AAIControllerBase_GravityOff::OnBoardCreated);
 	OnBoardCreated();
 }
 
 void AAIControllerBase_GravityOff::OnBoardCreated()
 {
-	if (!Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->ClaimedSpaceDelegateProp.IsBound())
+	Board = CKGameState->Board;
+
+	if (!CKGameState->ClaimedSpaceDelegateProp.IsBound())
 	{
-		Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->ClaimedSpaceDelegateProp.AddDynamic(this, &AAIControllerBase_GravityOff::OnSpaceClaimed);
+		CKGameState->ClaimedSpaceDelegateProp.AddDynamic(this, &AAIControllerBase_GravityOff::OnSpaceClaimed);
 	}
+
 	OnSpaceClaimed();
 }
 
 void AAIControllerBase_GravityOff::OnSpaceClaimed()
 {
-	ABoard_GravityOff* Board = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->Board;
-	if (Board && Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->IsMyTurn(TeamIdx))
+	if (!Board || !CKGameState->IsMyTurn(TeamIdx))
 	{
-		float TimeInSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld());
-
-		//if (GEngine)
-		//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("Real Time Seconds: %f"), TimeInSeconds));
-
-		AConnectKGameStateBase* CKGameState = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState());
-		NextMove = Async(
-			EAsyncExecution::Thread,
-			[this, Board, TimeInSeconds]() { return GetNextMove(Board, 5.0f, TimeInSeconds); },
-			[this]() { 
-				AsyncTask(ENamedThreads::GameThread, [this]()
-					{
-						MakeNextMove();
-					}
-				);
-			}
-		);
+		return;
 	}
+
+	float TimeInSeconds = UGameplayStatics::GetRealTimeSeconds(GetWorld());
+
+	//if (GEngine)
+	//	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("Real Time Seconds: %f"), TimeInSeconds));
+
+	NextMove = Async(
+		EAsyncExecution::Thread,
+		[this, TimeInSeconds]() { return GetNextMove(5.0f, TimeInSeconds); },
+		[this]() {
+			AsyncTask(ENamedThreads::GameThread, [this]()
+				{
+					MakeNextMove();
+				}
+			);
+		}
+	);
 }
 
 void AAIControllerBase_GravityOff::MakeNextMove()
 {
-	Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->ClaimBoardSpace(NextMove.Get().Y, NextMove.Get().X, TeamIdx);
+	CKGameState->ClaimBoardSpace(NextMove.Get().Y, NextMove.Get().X, TeamIdx);
 }
 
 FAllJunctionData AAIControllerBase_GravityOff::GetJunctionData(const FBoardEvaluationData& EvaluationData)
@@ -166,7 +170,7 @@ int AAIControllerBase_GravityOff::GetFinalScore(int AITotalScore, int OpponentTo
 	return AITotalScore - OpponentTotalScore;
 }
 
-FIntPoint AAIControllerBase_GravityOff::GetNextMove(ABoard_GravityOff* Board, float MaxTimeInSeconds, float StartTimeInSeconds)
+FIntPoint AAIControllerBase_GravityOff::GetNextMove(float MaxTimeInSeconds, float StartTimeInSeconds)
 {
 	TArray<FBoardMove> FoundBoardMoves;
 	FBoardMove BestMove;
@@ -179,7 +183,7 @@ FIntPoint AAIControllerBase_GravityOff::GetNextMove(ABoard_GravityOff* Board, fl
 		if (GEngine)
 			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("Reached Depth: %d"), TreeDepthLimit));
 
-		CurrentMove = FirstMax(Board, NEGATIVE_INFINITY, POSITIVE_INFINITY, TreeDepthLimit, MaxTimeInSeconds, StartTimeInSeconds);
+		CurrentMove = FirstMax(NEGATIVE_INFINITY, POSITIVE_INFINITY, TreeDepthLimit, MaxTimeInSeconds, StartTimeInSeconds);
 
 		if (CurrentMove.Value == CANCEL_VAL)
 		{
@@ -211,7 +215,7 @@ FIntPoint AAIControllerBase_GravityOff::GetNextMove(ABoard_GravityOff* Board, fl
 	return FoundBoardMoves[FoundBoardMoves.Num() - 1].Point;
 }
 
-FBoardMove AAIControllerBase_GravityOff::FirstMax(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds)
+FBoardMove AAIControllerBase_GravityOff::FirstMax(int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds)
 {
 
 	//if (GEngine)
@@ -228,7 +232,7 @@ FBoardMove AAIControllerBase_GravityOff::FirstMax(ABoard_GravityOff* Board, int 
 
 		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx);
 
-		int Min = MinVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
+		int Min = MinVal(Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
 		if (Min == CANCEL_VAL)
 		{
 			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
@@ -255,7 +259,7 @@ FBoardMove AAIControllerBase_GravityOff::FirstMax(ABoard_GravityOff* Board, int 
 	return BestMove;
 }
 
-int AAIControllerBase_GravityOff::MaxVal(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds)
+int AAIControllerBase_GravityOff::MaxVal(int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds)
 {
 
 	//if (GEngine)
@@ -296,7 +300,7 @@ int AAIControllerBase_GravityOff::MaxVal(ABoard_GravityOff* Board, int Alpha, in
 	{
 		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx);
 
-		int Min = MinVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
+		int Min = MinVal(Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
 		if (Min == CANCEL_VAL)
 		{
 			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);
@@ -325,7 +329,7 @@ int AAIControllerBase_GravityOff::MaxVal(ABoard_GravityOff* Board, int Alpha, in
 	return v;
 }
 
-int AAIControllerBase_GravityOff::MinVal(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds)
+int AAIControllerBase_GravityOff::MinVal(int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds)
 {
 
 	//if (GEngine)
@@ -365,7 +369,7 @@ int AAIControllerBase_GravityOff::MinVal(ABoard_GravityOff* Board, int Alpha, in
 	{
 		Board->SetBoardSpace(PossibleMove.Y, PossibleMove.X, TeamIdx == 0 ? 1 : 0);
 
-		int Max = MaxVal(Board, Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
+		int Max = MaxVal(Alpha, Beta, MaxSearchDepth - 1, MaxTimeInSeconds, StartTimeInSeconds);
 		if (Max == CANCEL_VAL)
 		{
 			Board->ClearBoardSpace(PossibleMove.Y, PossibleMove.X);

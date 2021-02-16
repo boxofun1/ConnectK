@@ -10,10 +10,6 @@ TArray<FSpaceGroup> AAIControllerBase_GravityOn::GetAllThreatSpaces(const FBoard
 {
     TArray<FSpaceGroup> AllThreatSpaces;
 
-    Mutex.Lock();
-    ABoard_GravityOff* Board = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->Board;
-    Mutex.Unlock();
-
     for (int i = 0; i < EvaluationData.AllTeamEvaluationData.Num(); i++)
     {
         FSpaceGroup PlayerThreats;
@@ -118,9 +114,7 @@ FAllThreatData AAIControllerBase_GravityOn::GetThreatData(const FBoardEvaluation
     FAllThreatData ThreatData;
     TArray<FSpaceGroup> AllThreatSpaces = GetAllThreatSpaces(EvaluationData);
 
-    Mutex.Lock();
-    int ColumnNum = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState())->Board->GetColumnNum();
-    Mutex.Unlock();
+    int ColumnNum = Board->GetColumnNum();
 
     for (int ColumnNumIdx = 0; ColumnNumIdx < ColumnNum; ColumnNumIdx++)
     {
@@ -144,17 +138,14 @@ FAllThreatData AAIControllerBase_GravityOn::GetThreatData(const FBoardEvaluation
 
 void AAIControllerBase_GravityOn::AddGameModeScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore)
 {
-	Mutex.Lock();
-	AConnectKGameStateBase* GameState = Cast<AConnectKGameStateBase>(GetWorld()->GetGameState());
-	Mutex.Unlock();
-	ABoard_GravityOff* Board = GameState->Board;
+
 	FAllThreatData AllThreatData = GetThreatData(EvaluationData);
 
 	int Domain = Board->GetRowNum() * Board->GetColumnNum();
 	int FirstPlayerTotal = 0;
 	int SecondPlayerTotal = 0;
 
-	int FirstPlayerTeamIdx = GameState->FirstPlayerTeam;
+	int FirstPlayerTeamIdx = CKGameState->FirstPlayerTeam;
 	int SecondPlayerTeamIdx = FirstPlayerTeamIdx == 0 ? 1 : 0;
 
 	if (Board->GetRowNum() % 2 == 0)

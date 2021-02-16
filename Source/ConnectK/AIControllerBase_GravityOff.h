@@ -44,6 +44,7 @@ struct FAllJunctionData
 
 class ABoard_GravityOff;
 class ABoardSpaceBase;
+class AConnectKGameStateBase;
 struct FBoardEvaluationData;
 /**
  * 
@@ -73,10 +74,10 @@ public:
 	void AddTeamJunctionScore(const FTeamJunctionData& TeamJunctionData, int& Score);
 	virtual void AddGameModeScore(const FBoardEvaluationData& EvaluationData, int& AITotalScore, int& OpponentTotalScore);
 
-	FIntPoint GetNextMove(ABoard_GravityOff* Board, float MaxTimeInSeconds, float StartTimeInSeconds);
-	FBoardMove FirstMax(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
-	int MaxVal(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
-	int MinVal(ABoard_GravityOff* Board, int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
+	FIntPoint GetNextMove(float MaxTimeInSeconds, float StartTimeInSeconds);
+	FBoardMove FirstMax(int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
+	int MaxVal(int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
+	int MinVal(int Alpha, int Beta, int MaxSearchDepth, float MaxTimeInSeconds, float StartTimeInSeconds);
 	int HFunc(const FBoardEvaluationData &EvaluationData);
 
 
@@ -85,6 +86,7 @@ protected:
 
 	int TeamIdx;
 	TFuture<FIntPoint> NextMove;
-
 	FCriticalSection Mutex;
+	ABoard_GravityOff* Board;
+	AConnectKGameStateBase* CKGameState;
 };

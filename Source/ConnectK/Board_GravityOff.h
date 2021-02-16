@@ -3,8 +3,6 @@
 #pragma once
 
 #include "BoardSpaceBase.h"
-//#include "TeamBoardEvaluationData.h"
-//#include "BoardEvaluationData.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Board_GravityOff.generated.h"
